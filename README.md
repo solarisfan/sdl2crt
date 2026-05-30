@@ -4,7 +4,12 @@ A pascal module implementing CRT unit using SDL2. Implementation is based on the
 Font data is from the site int10h.org<br>
 https://int10h.org/oldschool-pc-fonts/  
 
+You will need the freetype library. On Linux system installing the freetype-dev package is sufficient. On the Windows system youn will need the freetype.dll.<br>
+https://freetype.org/download.html
+
 You will need the SDL2 from SDL2-for-Pascal<br>
 https://github.com/PascalGameDevelopment/SDL2-for-Pascal  
 
-When Textmode is called, a new thread is initiated and a new SDL window is created. Most function/procedures in the unit are messages push into the SDL event queue.
+When Textmode is called, a new thread is initiated and a new SDL window is created. Most function/procedures in the unit are messages push into the SDL event queue. Upon program completion you can reset TextMode and the window will be closed. If TextMode is not reset, you can close the window and termiante the program manually.
+
+
