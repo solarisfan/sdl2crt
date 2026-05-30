@@ -10,8 +10,8 @@ begin
   TextMode(CO40);
   repeat
     c := ReadKey;
-    writel(c);
-  until c = #24; (* until escape key is pressed *)
+    writeln(c);
+  until c = #27; (* until escape key is pressed *)
   (* Resetting TextMode will close the window. *)
   TextMode(OrigMode);
 end.
