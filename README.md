@@ -13,6 +13,6 @@ https://github.com/PascalGameDevelopment/SDL2-for-Pascal
 When Textmode is called, a new thread is initiated and a new SDL window is created. Most function/procedures in the unit are messages push into the SDL event queue. Upon program completion you can reset TextMode and the window will be closed. If TextMode is not reset, you can close the window and termiante the program manually.
 
 Compiling the example can be as simple as<br>
-cd example<br>
-fpc -Fu../src -Fu<location of SDL2 unit> test.pas<br>
+>cd example<br>
+>fpc -Fu../src -Fu\<location of SDL2 unit\> test.pas<br>
 
