@@ -527,6 +527,8 @@ begin
 			SDLK_RIGHT: keyBuf.buf[2] := #77;
 			SDLK_PAGEUP: keyBuf.buf[2] := #73;
 			SDLK_PAGEDOWN: keyBuf.buf[2] := #81;
+			SDLK_HOME: keyBuf.buf[2] := #71;
+			SDLK_END: keyBuf.buf[2] := #79;
 			else
 				if (evt.key.keysym.sym >= SDLK_F1) and
 					(evt.key.keysym.sym <= SDLK_F10) then
