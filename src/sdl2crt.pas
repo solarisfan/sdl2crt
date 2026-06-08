@@ -118,7 +118,7 @@ type
 	(* Data passing between threads *)
 	TCursor = record
 		x, y : Byte;
-		ready : Boolean;
+		readyx, readyy : Boolean;
 	end;
 		
 	TViewPort = record
@@ -214,8 +214,8 @@ begin
 	WhereX := 0;
 	if not sdlReady then Exit(0);
 	postEvent(fnWhereX);
-	while not cursor.ready do ;
-	cursor.ready := false;
+	while not cursor.readyx do ;
+	cursor.readyx := false;
 	WhereX := cursor.x;
 end;
 
@@ -224,8 +224,8 @@ begin
 	WhereY := 0;
 	if not sdlReady then Exit(0);
 	postEvent(fnWhereY);
-	while not cursor.ready do ;
-	cursor.ready := false;
+	while not cursor.readyy do ;
+	cursor.readyy := false;
 	WhereY := cursor.y;
 end;
 
@@ -456,11 +456,11 @@ begin
 			pixmap.setBackColor(i);
 		end;
 		fnWhereX: begin
-			cursor.ready := true;
+			cursor.readyx := true;
 			cursor.x := term.x;
 		end;
 		fnWhereY: begin
-			cursor.ready := true;
+			cursor.readyy := true;
 			cursor.y := term.y;
 		end;
 		fnGotoXY: begin
@@ -694,7 +694,8 @@ begin
 	pen.h := 0;
 	term.x := 1;
 	term.y := 1;
-	cursor.ready := false; // Reset data transfer
+	cursor.readyx := false; // Reset data transfer
+	cursor.readyy := false; // Reset data transfer
 	vw.cursorShown := false;
 	vw.cursorOn := true;
 	WindMin := 0;
@@ -1032,7 +1033,8 @@ begin
 	savedOpenFunc := nil;
 	term.x := 1;
 	term.y := 1;
-	cursor.ready := false; // No data transfer yet
+	cursor.readyx := false; // No data transfer yet
+	cursor.readyy := false; // No data transfer yet
 	InitCriticalSection(keyBuf.key);
 	fontFileName := '';
 	fontSize := 0 ;
