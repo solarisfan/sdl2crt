@@ -52,6 +52,12 @@ var
 	LastMode : Word;
 	WindMax, WindMin : Word;
 	TextAttr : Byte;
+
+(* Unused variables *)
+	CheckBreak : Boolean;
+	CheckEOF : Boolean;
+	DirectVideo : Boolean;
+	CheckSnow : Boolean;
 	
 (* Extended variable *)
 	windowTitle : AnsiString;
@@ -83,6 +89,10 @@ procedure LowVideo;
 procedure DelLine;
 procedure InsLine;
 
+(* Unimplemted function *)
+procedure NoSound;
+procedure Sound(Hz : Word);
+	
 (* Extended procedures *)
 procedure TextModeFont(Mode :Word; font : AnsiString; ptSize : Integer);
 
@@ -1021,9 +1031,21 @@ begin
 	if id = 0 then CloseWindow;
 end;
 
+procedure NoSound;
+begin
+end;
+
+procedure Sound(Hz : Word);
+begin
+end;
+
 initialization
 begin	
 	Logger.log('Initializing SDL2 unit');
+	CheckBreak := true;
+	CheckEOF := true;
+	DirectVideo := false;
+	CheckSnow := false;
 	windowTitle := ApplicationName;
 	winThread := 0;
 	LastMode := ReservedTextMode;
