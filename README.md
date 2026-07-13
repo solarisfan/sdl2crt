@@ -16,3 +16,7 @@ Compiling the example can be as simple as<br>
 >cd example<br>
 >fpc -Fu../src -Fu\<location of SDL2 unit\> test.pas<br>
 
+Added extended procedure:  
+>TextModeFont(mode, full font file path)
+
+This procedure extend the original TextMode procedure with the added paramater specifying the full path to the font file to be used in the rendering engine.
