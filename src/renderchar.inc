@@ -14,7 +14,7 @@ var
 procedure tty_init(Mode : TTY_MODE);
 procedure tty_initWith(Mode : TTY_MODE; fontFile : AnsiString; ptSize :Integer);
 procedure tty_Done;
-procedure tty_renderChar(c : Char; foreColor, backColor : TSDL_Color; var surface : PSDL_Surface);
+procedure tty_renderChar(c : LongInt; foreColor, backColor : TSDL_Color; var surface : PSDL_Surface);
 procedure tty_SetPixelSize(var width, height : LongInt);
 procedure tty_GetPixelSize(var width, height : LongInt);
 procedure tty_SetMode(mode : TTY_MODE);
@@ -83,7 +83,6 @@ begin
 	x := alpha * fg;
 	x := divBy255(x);
 	x := x and $FF;
-	write(x, '-');
 	*)
 	y := ((fg * (alpha + 1)) + (bg * (256 - alpha))) >> 8;
 	blend := y;
@@ -108,7 +107,7 @@ begin
 	SDL_FillRect(surface, nil, SDL_MapRGB(surface^.format, backColor.r, backColor.g, backColor.b));
 end;
 
-procedure renderLCD(c : Char; foreColor, backColor : TSDL_Color; var surface : PSDL_Surface; offset : Integer);
+procedure renderLCD(foreColor, backColor : TSDL_Color; var surface : PSDL_Surface; offset : Integer);
 var
 	i, width, diff, pxWidth, pitches, trail, left : Integer;
 	bits : FT_Bitmap;
@@ -132,21 +131,27 @@ begin
 	newSurface(pen.w, pen.h, backColor, surface);
 	SDL_LockSurface(surface);
 	pixel := surface^.pixels;
-	//for i:=1 to pxWidth do write(IntToHex(i, 1));
-	//writeln;
-	left := face^.glyph^.metrics.horiBearingX>>6;
-	if left > 0 then pixel := pixel + left;
-	for i:=1 to offset do begin
-		pixel := pixel + pen.w;
+	(* Non monspace font has different font height outside of ASCII alphabets *)
+	if (surface^.h - bits.rows) >= offset then begin
+		if left > 0 then pixel := pixel + left;
+		for i:=1 to offset do begin
+			pixel := pixel + pen.w;
+		end;
 	end;
 	
-(*	write(c, ' ');
+(*	write(c, ' '); 
 	write('bits.width:', bits.width);
 	write('/3 pxWidth:', pxWidth, ' align: ', diff);
 	write(' pitches:', bits.pitch);
 	write(' maxWidth:', pen.w);
 	write(' trail:', trail);
 	write(' bearingY:', left);
+	writeln;
+	write(' bits.rows: ', bits.rows);
+	write(' pen.h: ', pen.h);
+	write(' surface.w: ', surface^.w);
+	write(' surface.h: ', surface^.h);
+	write(' offset: ', offset);
 	writeln;
 *)	
 	for i:=1 to bits.rows do begin
@@ -159,22 +164,16 @@ begin
 				if (px = 0) then begin
 					pixel^ := bg;
 					p := p + 3;
-					//write(' ');
 				end else if (px = $ff) then begin
 					pixel^ := fg;
 					p := p + 3;
-					//write('*');
 				end else begin
-					//write('*');
-					//if (px < $FE) then px := px + 2;
 					dst.r := blend(foreColor.r, backColor.r, px);
 					inc(p);
 					px := Byte(p^);
-					//if (px < $FE) then px := px + 2;
 					dst.g := blend(foreColor.g, backColor.g, px);
 					inc(p);
 					px := Byte(p^);
-					//if (px < $FE) then px := px + 2;
 					dst.b := blend(foreColor.b, backColor.b, px);
 					inc(p);
 					dst.a := $FF;
@@ -192,7 +191,7 @@ begin
 	SDL_UnlockSurface(surface);
 end;
 
-procedure renderNormal(c : Char; foreColor, backColor : TSDL_Color; var surface : PSDL_Surface; offset : Integer);
+procedure renderNormal(foreColor, backColor : TSDL_Color; var surface : PSDL_Surface; offset : Integer);
 var
 	i, j, width, pxWidth, trail : Integer;
 	bits : FT_Bitmap;
@@ -239,13 +238,13 @@ begin
 	SDL_UnlockSurface(surface);
 end;
 
-procedure tty_renderChar(c : Char; foreColor, backColor : TSDL_Color; var surface : PSDL_Surface);
+procedure tty_renderChar(c : LongInt; foreColor, backColor : TSDL_Color; var surface : PSDL_Surface);
 var
 	offset : Integer;
 	mode : Byte;
 	bits : FT_Bitmap;
 begin
-	LoadGlyph(ord(c));
+	LoadGlyph(c);
 	bits := face^.glyph^.bitmap;
 	
 	mode := Byte(bits.pixel_mode);
@@ -258,8 +257,8 @@ begin
 	write(' leading:', leading);
 	writeln(' offset:', offset);
 *)
-	if (mode = FT_PIXEL_MODE_LCD) then renderLCD(c, foreColor, backColor, surface, offset)
-	else renderNormal(c, foreColor, backColor, surface, offset);
+	if (mode = FT_PIXEL_MODE_LCD) then renderLCD(foreColor, backColor, surface, offset)
+	else renderNormal(foreColor, backColor, surface, offset);
 end;
 
 procedure resolveBaseline;
@@ -271,12 +270,12 @@ begin
 	maxHeight := 0;
 	maxWidth := 0;
 	baseline := 0;
-
-(*	write(' Ascender ', face^.ascender >> 6);
+(*
+	write(' Ascender ', face^.ascender >> 6);
 	write(' Descender ', (-face^.descender) >> 6);
 	write(' Height ', face^.height >> 6);
-	write(' max advance width ', face^.max_advance_width >> 6);
-	write(' max advance height ', face^.max_advance_height >> 6);
+	write(' max advance width ', Trunc((face^.max_advance_width >> 6)/3));
+	write(' max advance height ', Trunc((face^.max_advance_height >> 6)/3));
 	write(' Scable ', face^.face_flags and FT_FACE_FLAG_SCALABLE);
 	writeln;
 *)
@@ -337,7 +336,7 @@ var
 begin
 	if fontAry[ttyMode].fileName = '' then begin
 		Logger.error('No font file specified. ');
-		Logger.error('Consider using the extended procedure TextModeFont(mode, font file)');
+		Logger.error('Consider using the extended procedure TextModeFont(mode, font file, point size)');
 		Halt(3);
 	end;
 	f := fontAry[ttyMode].fileName;

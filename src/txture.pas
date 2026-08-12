@@ -1,6 +1,12 @@
 unit txture;
 interface
-uses sdl2, vgafont, sysutils, log4;
+uses sdl2, 
+{$if defined(NOFONT)}
+nofont,
+{$else}
+vgafont, 
+{$endif}
+sysutils, log4;
 
 const
 	(* Constant masking the High, Low and Norm Video call *)
@@ -48,7 +54,7 @@ type
 		procedure saveCursor(x, y : Integer);
 		procedure present(switch : Boolean);
 		procedure copyTexture(texture : PSDL_Texture; x, y : Integer);
-		procedure createTexture(s: PChar; var texture : PSDL_Texture);
+		procedure createTexture(ch : UInt32; var texture : PSDL_Texture);
 		procedure defineView(r :TSDL_Rect);
 		procedure destroyRenderer;
 		procedure scrollUp(offset, h : Integer);
@@ -217,13 +223,31 @@ var
 		end;
 	end;
 	
-	procedure TPixMap.createTexture(s: PChar; var texture : PSDL_Texture);
+	function toUtf32(s: PChar) : LongInt;
+	var
+		len : Byte;
+	begin
+		len := Length(s);
+		if len = 1 then begin
+			toUtf32 := ord(s[0]);
+		end else if len = 2 then begin
+			toUtf32 := ((ord(s[0]) and $1F) shl 6) or (ord(s[1]) and $3F);
+		end else if len = 3 then begin
+			toUtf32 := ((ord(s[0]) and $0F) shl 12) or ((ord(s[1]) and $3F) shl 6) 
+						or (ord(s[2]) and $3F);
+		end else if len = 4 then begin
+			toUtf32 := ((ord(s[0]) and $07) shl 18) or ((ord(s[1]) and $3F) shl 12)
+						or ((ord(s[2]) and $3F) shl 6) or (ord(s[3]) and $3F);
+		end else toUtf32 := 0;
+	end;
+	
+	procedure TPixMap.createTexture(ch : UInt32; var texture : PSDL_Texture);
 	var
 		surface : PSDL_Surface;
 (*		background : PSDL_Surface;
 		r : TSDL_Rect; *)
 	begin
-		tty_renderChar(s[0], foreColor, backColor, surface);
+		tty_renderChar(ch, foreColor, backColor, surface);
 		texture := SDL_CreateTextureFromSurface(render, surface);
 (*
 		r.x := 0;
@@ -242,34 +266,16 @@ var
 		SDL_FreeSurface(surface);
 	end;
 
-	procedure findTexture(s: PChar; var elem : PCacheTexture);
+	procedure findTexture(uc: UInt32; var elem : PCacheTexture);
 	var
-		uc : UInt32;
-		len, i, hash : Integer;
+		hash : Integer;
 		p, q : PCacheTexture;
-		x : Byte;
 		cont : Boolean;
 	begin
-		len := 0;
-		uc := 0;
 		elem := nil;
-		x := Byte(s[0]);
-		if x < $80 then begin
-			if (x > 1) and (x < 127) then
-			(* Printable ASCII Code *)
-				len := 1;
-		end
-		else if (x and $F0) = $F0 then len := 4
-		else if (x and $E0) = $E0 then len := 3
-		else if (x and $C0) = $C0 then len := 2;
-		if len > 0 then 
+		if uc > 0 then 
 		begin
-			for i := 0 to len - 1 do
-			begin
-				uc := uc shl 8;
-				uc := uc or Byte(s[i]);
-			end;
-			hash := uc mod 256;
+			hash := uc and $FF;
 			cont := true;
 			p := @TextureCache[hash];
 			(* First texture *)
@@ -311,13 +317,15 @@ var
 	procedure TPixMap.getTexture(s: PChar; var texture : PSDL_Texture);
 	var
 		e : PCacheTexture;
+		uc : UInt32;
 	begin
 		SDL_SetRenderDrawColor(render, foreColor.r, foreColor.g, foreColor.b, foreColor.a);
-		findTexture(s, e);
+		uc := toUtf32(s);
+		findTexture(uc, e);
 		if e = nil then 
 			texture := nil
 		else if (e^.ptr = nil) then begin
-			createTexture(s, texture);
+			createTexture(uc, texture);
 			e^.ptr := texture;
 		end else begin
 			texture := e^.ptr;
@@ -347,9 +355,9 @@ var
 	
 	procedure releaseCache(p : PCacheTexture);
 	begin
-//	writeln(stderr, 'Release: ', format('%p', [p]));
 		if p <> nil then
 		begin
+	writeln(stderr, 'Release: ', format('%p', [p]));
 			SDL_DestroyTexture(p^.ptr);
 			releaseCache(p^.next);
 			dispose(p);
@@ -368,6 +376,7 @@ var
 			end;
 			releaseCache(TextureCache[i].next);
 		end;
+		Logger.log('Destroy pix');
 		for i := 1 to 4 do begin
 			if pix[i] <> nil then SDL_DestroyTexture(pix[i]);
 			pix[i] := nil;
@@ -376,12 +385,15 @@ var
 		SDL_SetRenderTarget(render, nil);
 		canvas := nil;
 		view := nil;
+		Logger.log('Destroy scratch');
 		if scratch <> nil then SDL_DestroyTexture(scratch);
 		scratch := nil;
+		Logger.log('Destroy cursor');
 		for i := 1 to 2 do begin
 			if cursor.pic[i] <> nil then SDL_DestroyTexture(cursor.pic[i]);
 			cursor.pic[i] := nil;
 		end;
+		Logger.log('Done Release');
 		cursor.valid := false; (* Really useless, just peace of mind *)
 	end;
 
@@ -705,9 +717,10 @@ var
 	
 	procedure TPixMap.destroyRenderer;
 	begin
-		Logger.log('Destroy renderer');
 		Release;
+		Logger.log('Destroy renderer');
 		SDL_DestroyRenderer(render);
+		Logger.log('STart tty done');
 		tty_done;
 		render := nil;
 	end;

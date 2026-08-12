@@ -95,6 +95,10 @@ procedure Sound(Hz : Word);
 	
 (* Extended procedures *)
 procedure TextModeFont(Mode :Word; font : AnsiString; ptSize : Integer);
+procedure WriteChar(c : Char); (* Simple writing a single ASCII character *)
+
+(* Unicode helper function *)
+function UC4toUtf8(ch : Uint32) : String; (* Convert UCS-2/4 to UTF-8 *)
 
 implementation
 const
@@ -105,7 +109,7 @@ const
 	TextBlinkTime = QWord(700);
 	
 type
-	TfnCode = (fnNil, fnWrite, fnAddChar, fnShow, 
+	TfnCode = (fnNil, fnWrite, fnShow, 
 				fnWhereX, fnWhereY, fnGotoXY, fnTextColor, 
 				fnTextBackGround,
 				fnClrScr, fnClrEol,
@@ -138,6 +142,12 @@ type
 		cursorOn : Boolean;
 		ready : Boolean;
 	end;
+	
+	TUtf8 = record
+		nbytes : Byte; (* # of bytes in this character *)
+		idx : Byte; (* Index to the last byte populated *)
+		buf : Array[0..4] of Char; (* Only 4 bytes needed. Null terminated string *)
+	end;
 var
 	pen : TSDL_Rect; (* Physical pixel location, and font height and width in pixel *)
 	term : TSDL_Rect; (* Logical row, column location and physical view size in pixel *)
@@ -155,6 +165,7 @@ var
 	fgColor, bgColor : Byte;
 	savedTextAttr : Byte;
 	monoChrome : Boolean;
+	utf8ch : TUtf8;
 	
 	(* Remap sdl scancode to keyboard scancode *)
 	scanmap : array [4..29] of Byte =
@@ -309,14 +320,6 @@ begin
 	KeyPressed := keyBuf.keyPressed;
 end;
 	
-procedure renderChar(c : Char; x, y : Integer);
-var
-	texture : PSDL_Texture;
-begin
-	pixmap.getTexture(@c, texture);
-	if texture <> nil then pixmap.copyTexture(texture, x, y);
-end;
-
 (* Advance to next line *)
 procedure newline;
 var
@@ -360,15 +363,112 @@ begin
 	pixmap.saveCursor(pen.x, pen.y);
 end;
 
-procedure drawChar(c : Char; render : Boolean);
+procedure renderUtf8(x, y : Integer);
+var
+	texture : PSDL_Texture;
 begin
-	if (c = #10) or (c = #13) then begin
-		newLine;
-		Exit;
+	pixmap.getTexture(utf8ch.buf, texture);
+	if texture <> nil then pixmap.copyTexture(texture, x, y);
+end;
+
+procedure decodeUtf8(c : Char);
+var
+	x : Byte;
+begin
+	x := ord(c);
+//	logger.log('%s ', [logger.toHex(x)]);
+	if (x and $C0) > $80 then begin
+		(* 1st character *)
+		utf8ch.nbytes := 1;
+		if (x and $F0) = $F0 then utf8ch.nbytes := 4
+		else if (x and $E0) = $E0 then utf8ch.nbytes := 3
+		else if (x and $C0) = $C0 then utf8ch.nbytes := 2;
+		utf8ch.buf[0] := c;
+		utf8ch.idx := 1;
+		utf8ch.buf[utf8ch.idx] := #0;
+	end else if (x and $80) = $80 then begin
+		(* subsequent bytes stream *)
+		if (utf8ch.idx < utf8ch.nbytes) then begin
+			utf8ch.buf[utf8ch.idx] := c;
+			inc(utf8ch.idx);
+			utf8ch.buf[utf8ch.idx] := #0;
+		end;
+	end else begin
+		(* Broken utf8 character code. *)
+		utf8ch.nbytes := 0;
+		utf8ch.idx := 0;
 	end;
-//	writeln(stderr, c, ' pen.x: ', pen.x, ' pen.y ', pen.y, ' term.w ', term.w);
-	renderChar(c, pen.x, pen.y);
-	moveright;
+	if utf8ch.idx = utf8ch.nbytes then begin
+		renderUtf8(pen.x, pen.y);
+		moveright;
+	end;
+end;
+
+(* Convert UCS-4 to UTF8 string *)
+function UC4toUtf8(ch : Uint32) : String;
+var
+	s : array [0..7] of Char;
+begin
+	s[0] := #0;
+	s[1] := #0;
+	if ch <= $7F then begin
+		s[1] := chr(ch and $7f);
+		s[0] := #1;
+		s[2] := #0;
+	end else if (ch >= $80) and (ch <= $7ff) then begin
+		s[1] := chr(((ch shr 6) and $1F) or $C0);
+		s[2] := chr((ch and $3f) or $80);
+		s[0] := #2;
+		s[3] := #0;
+	end else if (ch >= $800) and (ch < $FFFF) then begin
+		s[3] := chr((ch and $3F) or $80);
+		s[2] := chr(((ch shr 6) and $3F) or $80);
+		s[1] := chr(((ch shr 12) and $0F) or $E0);
+		s[0] := #3;
+		s[4] := #0;
+	end else if (ch >= $10000) and (ch <= $1FFFFF) then begin
+		s[4] := chr((ch and $3F) or $80);
+		s[3] := chr(((ch shr 6) and $3F) or $80);
+		s[2] := chr(((ch shr 12) and $3F) or $80);
+		s[1] := chr(((ch shr 18) and $07) or $F0);
+		s[0] := #4;
+		s[5] := #0;
+	(* As per 2003 5 and 6 bytes UTF8 is deprecated *)
+	end else if ch <= $3FFFFFF then begin
+		s[1] := chr((ch shr 24) or $F8);
+		s[2] := chr(((ch shr 18) and $3F) or $80);
+		s[3] := chr(((ch shr 12) and $3F) or $80);
+		s[4] := chr(((ch shr 6) and $3F) or $80);
+		s[5] := chr((ch and $3F) or $80);
+		s[0] := #5;
+		s[6] := #0;
+	end else if ch <= $7FFFFFFF then begin
+		s[1] := chr((ch shr 30) or $FC);
+		s[2] := chr(((ch shr 24) and $3F) or $80);
+		s[3] := chr(((ch shr 18) and $3F) or $80);
+		s[4] := chr(((ch shr 12) and $3F) or $80);
+		s[5] := chr(((ch shr 6) and $3F) or $80);
+		s[6] := chr((ch and $3F) or $80);
+		s[0] := #6;
+		s[7] := #0;
+	end;
+	UC4toUtf8 := s;
+end;
+
+procedure drawChar(c : Char);
+begin
+	if ord(c) < $80 then begin
+		utf8ch.nbytes := 0;
+		utf8ch.buf[0] := c;
+		utf8ch.buf[1] := #0;
+		if (c = #10) or (c = #13) then begin
+			newLine;
+			Exit;
+		end;
+	//writeln(stderr, c, ' pen.x: ', pen.x, ' pen.y ', pen.y, ' term.w ', term.w);
+		renderUtf8(pen.x, pen.y);
+		moveright;
+	end else decodeUtf8(c)
 end;
 
 procedure clearScreen;
@@ -437,6 +537,7 @@ begin
 	end;
 end;
 
+
 procedure decodeUserEvent(evt : TSDL_Event);
 var
 	i : PtrUint;
@@ -446,11 +547,7 @@ begin
 	case opcode of
 		fnWrite: begin
 			i := PtrUint(evt.user.data1);
-			drawChar(char(i), true);
-		end;
-		fnAddChar: begin
-			i := PtrUint(evt.user.data1);
-			drawChar(char(i), false);
+			drawChar(char(i));
 		end;
 		fnShow: begin
 			pixmap.present(false);
@@ -713,6 +810,9 @@ begin
 	vw.x2 := 0;
 	vw.y1 := 0;
 	vw.y2 := 0;
+	utf8ch.nbytes := 0;
+	utf8ch.idx := 0;
+	utf8ch.buf[0] := #0;
 	
 	if (LastMode and Font8x8) = Font8x8 then begin
 		if fontFileName <> '' then
@@ -757,7 +857,7 @@ begin
 	SDL_Init(SDL_INIT_VIDEO);
 	eventID := SDL_RegisterEvents(1);
 	SDL_GetCurrentDisplayMode(0, @dm);
-	Logger.log('Screen %d x %d Pixel: %d x %d %d x %d EST texture mem: %.2fM', 
+	Logger.log('Screen %d x %d Pixel: %d x %d Win: %d x %d EST texture mem: %.2fM', 
 		[dm.w, dm.h, pen.w, pen.h, term.w, term.h, term.w*term.h*4/1024/1024]);
 	if term.w < 1 then Halt(0);
 	if term.h < 1 then Halt(0);
@@ -830,19 +930,28 @@ begin
 end;
 
 
-procedure putChar(c : Char; render : Boolean);
+procedure putChar(c : Char);
 var
 	evt : TSDL_Event;
 	i : PtrUint;
-	
+	valid : Boolean;
 begin
-	evt.type_ := eventID;
-	if render then evt.user.code := ord(fnWrite)
-	else evt.user.code := ord(fnAddChar);
-	i := PtrUint(c);
-	evt.user.data1 := PInteger(i);
-	if SDL_PushEvent(@evt) <> 1 then 
-		Logger.error('SDL push event failed');
+	valid := false;
+	if c > #31 then valid := true
+	else if c = #10 then valid := true;
+	if valid then begin
+		evt.type_ := eventID;
+		evt.user.code := ord(fnWrite);
+		i := PtrUint(c);
+		evt.user.data1 := PInteger(i);
+		if SDL_PushEvent(@evt) <> 1 then 
+			Logger.error('SDL push event failed');
+	end;
+end;
+
+procedure WriteChar(c: Char);
+begin
+	putChar(c);
 end;
 
 procedure updateWindow;
@@ -932,11 +1041,11 @@ begin
 		if i > 1 then begin
 			for j := 1 to i do begin
 				if temp[j] <> #13 then
-					putChar(temp[j], false);
+					putChar(temp[j]);
 			end;
 			updateWindow;
 		end else begin
-			putChar(temp[1], true);
+			putChar(temp[1]);
 		end;
 		dec(F.BufPos,i);
 		inc(idx,i);
