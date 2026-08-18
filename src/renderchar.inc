@@ -1,7 +1,7 @@
 interface
-uses sdl2, freetypeh, sysutils, log4,
+uses sdl2, freetypeh, sysutils, log4
 {$if defined(VGAFONT)}
-vgadata
+,vgadata
 {$endif}
 ;
 
@@ -10,6 +10,7 @@ type
 
 var
 	tty_console : TTY_MODE;
+	tty_useFontFile : Boolean;
 	
 procedure tty_init(Mode : TTY_MODE);
 procedure tty_initWith(Mode : TTY_MODE; fontFile : AnsiString; ptSize :Integer);
@@ -30,6 +31,7 @@ type
 	end;
 	TFontFace = record
 		fileName : AnsiString;
+		ptsize : Integer; (* Font size on loading fotn file *)
 		data : Pointer;
 		size : Int64;
 	end;
@@ -405,10 +407,16 @@ procedure load_face;
 begin
 	if fontAry[ttyMode].data = nil then load_from_file
 	else load_from_memory;
+	(* Apply font size when supply with a font size > 0, 
+	   otherwise use the default font size. 
+	   This works best with the embedded font data *)
+	if fontAry[ttyMode].ptsize > 0 then
+		FT_Set_Char_Size(face, 0, fontAry[ttyMode].ptsize * 64, 0, 0);
 	pen.w := 0;
 	if req.h > 0 then pen.h := req.h
 	else if pen.h = 0 then pen.h := (face^.ascender - face^.descender)>>6;
-	FT_Set_Pixel_Sizes(face, 0, pen.h);
+	if fontAry[ttyMode].ptsize <= 0 then
+		FT_Set_Pixel_Sizes(face, 0, pen.h);
 	resolveBaseline;
 end;
 
@@ -493,9 +501,11 @@ end;
 
 procedure tty_init(mode : TTY_MODE);
 begin
-	Logger.log('Load freetype library');
-	localInit(mode);
-	load_face;
+	if (not tty_useFontFile) or (fontAry[mode].fileName = '') then begin
+		Logger.log('Load freetype library');
+		localInit(mode);
+		load_face;
+	end else tty_initWith(mode, fontAry[mode].fileName, fontAry[mode].ptsize);
 	//FT_Set_Pixel_Sizes(face, pen.w, pen.h);
 end;
 
