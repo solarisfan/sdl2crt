@@ -18,7 +18,6 @@ const
 	DefaultFontFile1 = '/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf'; (* 40X25 *)
 	DefaultFontFile2 = '/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf'; (* 80X25 *)
 	DefaultFontFile3 = '/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf'; (* 80X50 *)
-	//DefaultFontFile = '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc';
 {$ELSEIF defined(WINDOWS)}
 	DefaultFontFile1 = 'C:\Windows\Fonts\ARIALUNI.TTF'; (* 40X25 *)
 	DefaultFontFile2 = 'C:\Windows\Fonts\ARIALUNI.TTF'; (* 80X25 *)
