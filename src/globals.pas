@@ -17,7 +17,6 @@ const
 	DefaultFontFile40X25 = '/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf'; (* 40X25 *)
 	DefaultFontFile80X25 = '/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf'; (* 80X25 *)
 	DefaultFontFile80X50 = '/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf'; (* 80X50 *)
-	//DefaultFontFile = '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc';
 {$ELSEIF defined(WINDOWS)}
 	DefaultFontFile40X25 = 'C:\Windows\Fonts\ARIALUNI.TTF'; (* 40X25 *)
 	DefaultFontFile80X25 = 'C:\Windows\Fonts\ARIALUNI.TTF'; (* 80X25 *)
@@ -34,5 +33,4 @@ type
 implementation	
 
 begin	
-writeln(stderr, 'glovals');
 end.
