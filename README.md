@@ -22,5 +22,5 @@ Added extended procedure:
 
 This procedure extend the original TextMode procedure with the added parameter specifying the full path to the font file to be used in the rendering engine.
 
-Modify the file **vgafont.pas** with the font file you wishes to be included by default.  
+Modify the file **globals.pas** with the font file you wishes to be included by default.  
 A compilation symbol USEFONTFILE, `-dUSEFONTFILE` , can be included in the compile command line to instruct module to load font file instead of using the embedded font.
