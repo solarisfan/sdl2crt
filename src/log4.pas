@@ -10,7 +10,7 @@ const
 	LogWarn = 3;
 	LogInfo = 4;
 	LogDebug = 5;
-	DefaultLogLevel = LogInfo;
+	DefaultLogLevel = LogError;
 	
 type
 	TLogLevel = 1 .. 5;
