@@ -3,10 +3,12 @@ interface
 uses sdl2, 
 {$if defined(NOFONT)}
 nofont,
+{$elseif defined(FONTFILE)}
+filefont,
 {$else}
 vgafont, 
 {$endif}
-sysutils, log4;
+globals, sysutils, log4;
 
 const
 	(* Constant masking the High, Low and Norm Video call *)
@@ -14,7 +16,6 @@ const
 	LowIntensity = 2;
 	HighIntensity = 3;
 type
-	TScreenMode = (S40x25, S80x25, S80x50);
 	TPixArray = array of array of PSDL_Texture;
 	TCursorMap = object
 		pic : array [1..2] of PSDL_Texture;
@@ -357,7 +358,7 @@ var
 	begin
 		if p <> nil then
 		begin
-	writeln(stderr, 'Release: ', format('%p', [p]));
+			Logger.log('Release: %p', [p]);
 			SDL_DestroyTexture(p^.ptr);
 			releaseCache(p^.next);
 			dispose(p);
@@ -699,20 +700,12 @@ var
 	
 	procedure TPixMap.setDimension(x : TScreenMode);
 	begin
-		case x of
-			S80x50: tty_init(M80x50);
-			S40x25: tty_init(M40x25);
-			S80x25: tty_init(M80x25);
-		end;
+		tty_init(x);
 	end;
 	
 	procedure TPixMap.setDimensionWith(x : TScreenMode; fontFile : AnsiString; ptSize : Integer);
 	begin
-		case x of
-			S80x50: tty_initWith(M80x50, fontFile, ptSize);
-			S40x25: tty_initWith(M40x25, fontFile, ptSize);
-			S80x25: tty_initWith(M80x25, fontFile, ptSize);
-		end;
+		tty_initWith(x, fontFile, ptsize);
 	end;
 	
 	procedure TPixMap.destroyRenderer;
@@ -720,7 +713,6 @@ var
 		Release;
 		Logger.log('Destroy renderer');
 		SDL_DestroyRenderer(render);
-		Logger.log('STart tty done');
 		tty_done;
 		render := nil;
 	end;

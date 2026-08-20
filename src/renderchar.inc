@@ -1,24 +1,21 @@
 interface
-uses sdl2, freetypeh, sysutils, log4
+uses sdl2, freetypeh, sysutils, log4, globals
 {$if defined(VGAFONT)}
 ,vgadata
 {$endif}
 ;
 
-type
-	TTY_MODE = (M40x25, M80x25, M80x50);
-
 var
-	tty_console : TTY_MODE;
+	tty_console : TScreenMode;
 	tty_useFontFile : Boolean;
 	
-procedure tty_init(Mode : TTY_MODE);
-procedure tty_initWith(Mode : TTY_MODE; fontFile : AnsiString; ptSize :Integer);
+procedure tty_init(Mode : TScreenMode);
+procedure tty_initWith(Mode : TScreenMode; fontFile : AnsiString; ptSize :Integer);
 procedure tty_Done;
 procedure tty_renderChar(c : LongInt; foreColor, backColor : TSDL_Color; var surface : PSDL_Surface);
 procedure tty_SetPixelSize(var width, height : LongInt);
 procedure tty_GetPixelSize(var width, height : LongInt);
-procedure tty_SetMode(mode : TTY_MODE);
+procedure tty_SetMode(mode : TScreenMode);
 
 implementation
 
@@ -40,11 +37,11 @@ var
 	lib : PFT_Library;
 	face : PFT_Face;
 	err : FT_Error;
-	fontAry : array[TTY_MODE] of TFontFace;
+	fontAry : array[TScreenMode] of TFontFace;
 	pen, req : TSize;
 	leading : Integer;
 	renderMode : FT_Render_Mode;
-	ttyMode : TTY_MODE;
+	ttyMode : TScreenMode;
 	rawData : Pointer;
 	
 	function FT_Render_Glyph(glyph : PFT_GlyphSlot; load_flags: FT_Render_Mode): integer; cdecl; external FreeTypeDLL Name 'FT_Render_Glyph';
@@ -452,22 +449,22 @@ begin
 	width := pen.w;
 end;
 
-procedure SetMode(mode :TTY_MODE);
+procedure SetMode(mode :TScreenMode);
 begin
 	if ttyMode = mode then exit;
 	ttyMode := mode;
 	case mode of
-		M40x25:
+		S40x25:
 		begin
 			req.w := 0;
 			req.h := 22;
 		end;
-		M80x25:
+		S80x25:
 		begin
 			req.w := 0;
 			req.h := 21;
 		end;
-		M80x50:
+		S80x50:
 		begin
 			req.w := 0;
 			req.h := 9;
@@ -475,14 +472,14 @@ begin
 	end; (* End case *)
 end;
 
-procedure tty_SetMode(mode :TTY_MODE);
+procedure tty_SetMode(mode :TScreenMode);
 begin
 	SetMode(mode);
 	FT_Done_Face(face);
 	load_face;
 end;
 
-procedure localInit(mode : TTY_MODE);
+procedure localInit(mode : TScreenMode);
 begin
 	face := nil;
 	pen.w := 0;
@@ -499,7 +496,7 @@ begin
 	end;
 end;
 
-procedure tty_init(mode : TTY_MODE);
+procedure tty_init(mode : TScreenMode);
 begin
 	if (not tty_useFontFile) or (fontAry[mode].fileName = '') then begin
 		Logger.log('Load freetype library');
@@ -509,7 +506,7 @@ begin
 	//FT_Set_Pixel_Sizes(face, pen.w, pen.h);
 end;
 
-procedure tty_initWith(Mode : TTY_MODE; fontFile : AnsiString; ptSize :Integer);
+procedure tty_initWith(Mode : TScreenMode; fontFile : AnsiString; ptSize :Integer);
 begin
 	if fontFile = '' then exit;
 	Logger.log('Load freetype library with %s', [fontFile]);

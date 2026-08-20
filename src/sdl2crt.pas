@@ -17,7 +17,7 @@ uses
 {$ifdef unix }
 cthreads,
 {$endif}
-ctypes, math, sdl2, txture, sysutils, log4;
+globals, ctypes, math, sdl2, txture, sysutils, log4;
 
 const
 	(* IRGB color constant equivalent *)
