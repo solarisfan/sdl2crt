@@ -264,56 +264,38 @@ procedure resolveBaseline;
 var
 	i, margin, baseline : Integer;
 	maxHeight, maxWidth : Integer;
+	h, fontHeight : LongInt;
 begin
 	margin := 0;
 	maxHeight := 0;
 	maxWidth := 0;
 	baseline := 0;
-(*
-	write(' Ascender ', face^.ascender >> 6);
-	write(' Descender ', (-face^.descender) >> 6);
-	write(' Height ', face^.height >> 6);
-	write(' max advance width ', Trunc((face^.max_advance_width >> 6)/3));
-	write(' max advance height ', Trunc((face^.max_advance_height >> 6)/3));
-	write(' Scable ', face^.face_flags and FT_FACE_FLAG_SCALABLE);
-	writeln;
-*)
+	h := Trunc(((face^.ascender - face^.descender)*face^.size^.metrics.y_scale)/$10000);
+	fontHeight := Trunc((h and -64)/64);
+	Logger.log('Ascender: %d Descender: %d scale: %.4n face Height: %d ', 
+		[face^.ascender, face^.descender, face^.size^.metrics.y_scale/$10000,
+		face^.height >> 6]);
+	Logger.log('Scalable: %d Max advance Width: %d Max advance Height: %d Font Height: %d', 
+		[face^.face_flags and FT_FACE_FLAG_SCALABLE, face^.max_advance_width >> 6, 
+		face^.max_advance_height, fontHeight]);
+
 	for i:=65 to 122 do begin
 		LoadGlyph(i);
-		(*
-			write(chr(i), ' bearing x:', face^.glyph^.metrics.horiBearingX>>6);
-			write(' metrics width:', face^.glyph^.metrics.width>>6);
-			write(' bits width:', face^.glyph^.bitmap.width, '(', trunc(face^.glyph^.bitmap.width/3), ')');
-			write(' bits pitch:', face^.glyph^.bitmap.pitch, '(', trunc(face^.glyph^.bitmap.pitch/3), ')');
-			writeln(' sum:', (face^.glyph^.metrics.horiBearingX + face^.glyph^.metrics.width)>>6);
-*)
 		if (face^.glyph^.metrics.height > maxHeight) then begin
 			maxHeight := face^.glyph^.metrics.height;
-			(*writeln('Max Height (', char(i), '):', maxHeight>>6);  *)
 		end;
 		if (face^.glyph^.bitmap.width > maxWidth) then begin
 			maxWidth := face^.glyph^.bitmap.width;
-(*			write(' bearing x:', face^.glyph^.metrics.horiBearingX>>6);
-			write(' metrics width:', face^.glyph^.metrics.width>>6);
-			writeln(' Max Width (', char(i), '):', Trunc(maxWidth/3));
-*)
 		end;
 		if ((face^.glyph^.metrics.height - face^.glyph^.metrics.horiBearingY) > 0) then begin
 			if ((face^.glyph^.metrics.height - face^.glyph^.metrics.horiBearingY) > baseline) then begin
 				if face^.glyph^.metrics.horiBearingY > 0 then begin
 					baseline := face^.glyph^.metrics.height - face^.glyph^.metrics.horiBearingY;
-(*					write('Baseline ', char(i),' top:',face^.glyph^.bitmap_top);
-					write(' bearing:',face^.glyph^.metrics.horiBearingY >> 6);
-					write(' height ', face^.glyph^.metrics.height>>6,' baseline:', def.baseline>>6);
-					write(' Pitch: ', face^.glyph^.bitmap.pitch);
-					write(' pixel mode: ', ord(face^.glyph^.bitmap.pixel_mode));
-					write(' palatte mode: ', ord(face^.glyph^.bitmap.palette_mode));
-					writeln(' width ', trunc(face^.glyph^.bitmap.width/3));
-*)
 				end;
 			end;
 		end;
 	end;
+	Logger.log('Pixel Mode: %d', [ord(face^.glyph^.bitmap.pixel_mode)]);
 	if ord(face^.glyph^.bitmap.pixel_mode) = FT_PIXEL_MODE_LCD then maxWidth := Trunc(maxWidth/3);
 	maxHeight := maxHeight >> 6;
 	baseline := baseline >> 6;
