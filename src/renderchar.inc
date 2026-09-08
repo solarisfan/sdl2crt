@@ -137,21 +137,8 @@ begin
 			pixel := pixel + pen.w;
 		end;
 	end;
-	
-(*	write(c, ' '); 
-	write('bits.width:', bits.width);
-	write('/3 pxWidth:', pxWidth, ' align: ', diff);
-	write(' pitches:', bits.pitch);
-	write(' maxWidth:', pen.w);
-	write(' trail:', trail);
-	write(' bearingY:', left);
-	writeln;
-	write(' bits.rows: ', bits.rows);
-	write(' pen.h: ', pen.h);
-	write(' surface.w: ', surface^.w);
-	write(' surface.h: ', surface^.h);
-	write(' offset: ', offset);
-	writeln;
+(*	Logger.log('bits.row: %d bits.width: %d pxWidth: %d pitch: %d trail: %d left: %d pen.h: %d offset: %d', 
+		[bits.rows, bits.width, pxWidth, bits.pitch, trail, left, pen.h, offset]);
 *)	
 	for i:=1 to bits.rows do begin
 		width := pxWidth;
@@ -212,7 +199,7 @@ begin
 	for i:=1 to offset do begin
 		pixel := pixel + pen.w;
 	end;
-//	writeln(c,' width: ',bits.width, ' pitch: ', bits.pitch);
+	//Logger.log('width: %d pitch: %d', [bits.width, bits.pitch]);
 	for i:=1 to bits.rows do begin
 		width := bits.width;
 		for j := 1 to bits.pitch do begin
@@ -250,11 +237,10 @@ begin
 	offset := pen.h - (face^.glyph^.metrics.height >> 6);
 	offset := offset + (face^.glyph^.metrics.height - face^.glyph^.metrics.horiBearingY) >> 6;
 	offset := offset - leading;
-(*	write(c, ' pen.h:', pen.h);
-	write(' height:', face^.glyph^.metrics.height >> 6);
-	write(' bearing:', face^.glyph^.metrics.horiBearingY >> 6);
-	write(' leading:', leading);
-	writeln(' offset:', offset);
+(*
+	Logger.log('%s height: %d offset: %d leading: %d bearing: %d', 
+		[char(c), face^.glyph^.metrics.height >> 6, offset, leading,
+		face^.glyph^.metrics.horiBearingY >> 6]);
 *)
 	if (mode = FT_PIXEL_MODE_LCD) then renderLCD(foreColor, backColor, surface, offset)
 	else renderNormal(foreColor, backColor, surface, offset);
@@ -264,21 +250,35 @@ procedure resolveBaseline;
 var
 	i, margin, baseline : Integer;
 	maxHeight, maxWidth : Integer;
-	h, fontHeight : LongInt;
+	h, fontHeight, fontWidth : LongInt;
+	scale : Extended;
 begin
 	margin := 0;
 	maxHeight := 0;
 	maxWidth := 0;
 	baseline := 0;
-	h := Trunc(((face^.ascender - face^.descender)*face^.size^.metrics.y_scale)/$10000);
+	i := ord('A');
+	LoadGlyph(i);
+	scale := face^.size^.metrics.y_scale;
+	(* Default font size, scale is 0, we just set it to 1 *)
+	if scale <= 0 then scale := 1
+	else scale := scale/$10000; (* Normalized the scale *)
+	maxWidth := face^.glyph^.bitmap.width;
+	h := Trunc((face^.ascender - face^.descender)*scale);
 	fontHeight := Trunc((h and -64)/64);
-	Logger.log('Ascender: %d Descender: %d scale: %.4n face Height: %d ', 
+	Logger.log('Scale: %d %.4f h:%d metrics.max_advance:%d ', [face^.size^.metrics.y_scale, scale,  
+		Trunc((face^.ascender - face^.descender)*scale), face^.size^.metrics.max_advance>>6]);
+	(* When font size is not set, metrics.max_advance is 0, so use face max_advance_width *)
+	if face^.size^.metrics.max_advance > 0 then
+		fontWidth := face^.size^.metrics.max_advance >> 6
+	else 
+		fontWidth := face^.max_advance_width >> 6;
+	Logger.log('Ascender: %d Descender: %d scale: %.4n face Height: %d x-scale: %d', 
 		[face^.ascender, face^.descender, face^.size^.metrics.y_scale/$10000,
-		face^.height >> 6]);
-	Logger.log('Scalable: %d Max advance Width: %d Max advance Height: %d Font Height: %d', 
-		[face^.face_flags and FT_FACE_FLAG_SCALABLE, face^.max_advance_width >> 6, 
-		face^.max_advance_height, fontHeight]);
-
+		face^.height >> 6, face^.size^.metrics.x_scale]);
+	Logger.log('Scalable: %d face Max advance Width: %d face Max advance Height: %d Font Height: %d width: %d', 
+		[face^.face_flags and FT_FACE_FLAG_SCALABLE, face^.max_advance_width  >> 6, 
+		face^.max_advance_height >> 6, fontHeight, fontWidth]);
 	for i:=65 to 122 do begin
 		LoadGlyph(i);
 		if (face^.glyph^.metrics.height > maxHeight) then begin
@@ -286,6 +286,7 @@ begin
 		end;
 		if (face^.glyph^.bitmap.width > maxWidth) then begin
 			maxWidth := face^.glyph^.bitmap.width;
+			//Logger.log('%s %d',[char(i), maxWidth]);
 		end;
 		if ((face^.glyph^.metrics.height - face^.glyph^.metrics.horiBearingY) > 0) then begin
 			if ((face^.glyph^.metrics.height - face^.glyph^.metrics.horiBearingY) > baseline) then begin
@@ -295,9 +296,12 @@ begin
 			end;
 		end;
 	end;
-	Logger.log('Pixel Mode: %d', [ord(face^.glyph^.bitmap.pixel_mode)]);
 	if ord(face^.glyph^.bitmap.pixel_mode) = FT_PIXEL_MODE_LCD then maxWidth := Trunc(maxWidth/3);
+	Logger.log('Pixel Mode: %d Surveyed: Max Height: %d Max Width: %d', 
+		[ord(face^.glyph^.bitmap.pixel_mode), maxHeight >> 6, maxWidth]);
 	maxHeight := maxHeight >> 6;
+	if maxHeight < fontHeight then maxHeight := fontHeight;
+	if maxWidth < fontWidth then maxWidth := fontWidth;
 	baseline := baseline >> 6;
 	maxHeight := maxHeight + baseline;
 	margin := (req.h - maxHeight)>>1;
@@ -305,15 +309,16 @@ begin
 	leading := baseline + margin;
 	pen.w := maxWidth;
 	pen.h := maxHeight;
-	if req.w > maxWidth then pen.w := req.w;
+	if ((req.w > 0) and (req.w > maxWidth)) then pen.w := req.w;
 	if req.h > maxHeight then pen.h := req.h;
-	Logger.log('Eff height: %d margin: %d Width: %d maxHeight: %d Baseline adjustment: %d', 
-			[pen.h, margin, pen.w, maxHeight, baseline]);
+	Logger.log('Eff height: %d margin: %d Width: %d maxHeight: %d Baseline adjustment: %d maxWidth: %d', 
+			[pen.h, margin, pen.w, maxHeight, baseline, maxWidth]);
 end;
 
 procedure load_from_file;
 var
 	f : AnsiString;
+	h : LongInt;
 begin
 	if fontAry[ttyMode].fileName = '' then begin
 		Logger.error('No font file specified. ');
@@ -335,15 +340,30 @@ begin
 		Logger.error('Error loading font file (%d)', [err]);
 		Halt(1);
 	end;
+	if fontAry[ttyMode].ptsize > 0 then
+		FT_Set_Char_Size(face, 0, fontAry[ttyMode].ptsize * 64, 0, 0)
+	else begin
+		h := (face^.ascender - face^.descender)>>6;
+		Logger.log('Font size not set using native height: %d', [h]);
+		FT_Set_Pixel_Sizes(face, 0, h);	
+	end;
 end;
 
 procedure load_from_memory;
+var
+	h : LongInt;
 begin
 	err := FT_New_Memory_Face(lib, fontAry[ttyMode].data, fontAry[ttyMode].size, 0, face);
 	if err > 0 then begin
 		Logger.error('Internal error font info corrupted %d', [err]);
 		Halt(1);
 	end;
+	(* Use the default font size in the embedded font *)
+	h := (face^.ascender - face^.descender)>>6;
+	Logger.log('ptsize: %d mode: %d h: %d', [fontAry[ttyMode].ptsize, ttyMode, h]);
+	//if fontAry[ttyMode].ptsize > 0 then FT_Set_Char_Size(face, 0, 16 * 64, 96, 96) //fontAry[ttyMode].ptsize * 64, 0, 0)
+	//else FT_Set_Pixel_Sizes(face, 0, h);
+	FT_Set_Pixel_Sizes(face, 0, h);
 end;
 
 (* Really for debugging purpose *)
@@ -386,20 +406,12 @@ procedure load_face;
 begin
 	if fontAry[ttyMode].data = nil then load_from_file
 	else load_from_memory;
-	(* Apply font size when supply with a font size > 0, 
-	   otherwise use the default font size. 
-	   This works best with the embedded font data *)
-	if fontAry[ttyMode].ptsize > 0 then
-		FT_Set_Char_Size(face, 0, fontAry[ttyMode].ptsize * 64, 0, 0);
-	pen.w := 0;
-	if req.h > 0 then pen.h := req.h
-	else if pen.h = 0 then pen.h := (face^.ascender - face^.descender)>>6;
-	if fontAry[ttyMode].ptsize <= 0 then
-		FT_Set_Pixel_Sizes(face, 0, pen.h);
 	resolveBaseline;
 end;
 
 procedure useFont(fontFile :PChar; size:Integer);
+var
+	h : LongInt;
 begin
 	FT_Done_Face(face);
 	err := FT_New_Face(lib, fontFile, 0, face);
@@ -407,11 +419,18 @@ begin
 		Logger.error('Cannot load file %s', [fontFile]);
 		exit;
 	end;
-	Logger.log('num faces %d num glyphs %d', [face^.num_faces, face^.num_glyphs]);
-	FT_Set_Char_Size(face, 0, size * 64, 0, 0);
-	pen.w := 0;
+	Logger.log('num faces %d num glyphs %d point size:%d', 
+		[face^.num_faces, face^.num_glyphs, size]);
+	if size > 0 then FT_Set_Char_Size(face, 0, size * 64, 0, 0)
+	else begin
+		h := (face^.ascender - face^.descender)>>6;
+		Logger.log('Font size not set using native height: %d', [h]);
+		FT_Set_Pixel_Sizes(face, 0, h);	
+	end;
+(*	pen.w := 0;
 	if req.h > 0 then pen.h := req.h
 	else if pen.h = 0 then pen.h := (face^.ascender - face^.descender)>>6;
+*)
 	resolveBaseline;
 end;
 
@@ -439,12 +458,12 @@ begin
 		S40x25:
 		begin
 			req.w := 0;
-			req.h := 22;
+			req.h := 0;
 		end;
 		S80x25:
 		begin
 			req.w := 0;
-			req.h := 21;
+			req.h := 0;
 		end;
 		S80x50:
 		begin
