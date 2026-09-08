@@ -244,6 +244,7 @@ function WhereY : Byte;
 begin
 	WhereY := 0;
 	if not sdlReady then Exit(0);
+	cursor.readyy := false;
 	postEvent(fnWhereY);
 	while not cursor.readyy do ;
 	cursor.readyy := false;
@@ -254,12 +255,12 @@ procedure GotoXY(x, y : Byte);
 var
 	i, j : PtrUint;
 begin
+//	Logger.log('GotoXY %d %d', [x,y]);
 	if not sdlReady then Exit;
 	if x < 1 then Exit;
 	if y < 1 then Exit;
 	if x > vw.col then exit;
 	if y > vw.row then exit;
-	//Logger.log('GotoXY %d %d', [x,y]);
 	i := PtrUint(x);
 	j := PtrUint(y);
 	postEvent(fnGotoXY, PInteger(i), PInteger(j));
@@ -563,12 +564,12 @@ begin
 			pixmap.setBackColor(i);
 		end;
 		fnWhereX: begin
-			cursor.readyx := true;
 			cursor.x := term.x;
+			cursor.readyx := true;
 		end;
 		fnWhereY: begin
-			cursor.readyy := true;
 			cursor.y := term.y;
+			cursor.readyy := true;
 		end;
 		fnGotoXY: begin
 			moveTo(evt);
@@ -693,7 +694,7 @@ begin
 	case evt.type_ of
 	SDL_QUITEV:
 	begin
-		GetNextEvent := FALSE;
+		getNextEvent := FALSE;
 	end;
 	SDL_TEXTINPUT: handleInput(evt);
 	SDL_KEYDOWN: handleKeyDown(evt, modi);
@@ -716,7 +717,7 @@ begin
 	lastFlash := 0;
 	while (cont) do begin
 		tt := SDL_GetTicks64; //GetTickCount64;
-		cont := GetNextEvent;
+		cont := getNextEvent;
 		if ((tt - lastBlink) > BlinkTime) then 
 			toBlink := true; (* For visiblity, we only need to flash the cursor on refresh *)
 		if (tt - lastFlash) > flashTime then flashText := true;
@@ -854,8 +855,11 @@ begin
 	include(m, exInvalidOp);
 	SetExceptionMask(m);
 	
-	SDL_Init(SDL_INIT_VIDEO);
-	eventID := SDL_RegisterEvents(1);
+	if SDL_Init(SDL_INIT_VIDEO) < 0 then begin
+		Logger.error('SDL iniialization problem %s', [SDL_GetError()]);
+		Halt(1);
+	end;
+	if eventID = 0 then eventID := SDL_RegisterEvents(1);
 	SDL_GetCurrentDisplayMode(0, @dm);
 	Logger.log('Screen %d x %d Pixel: %d x %d Win: %d x %d EST texture mem: %.2fM', 
 		[dm.w, dm.h, pen.w, pen.h, term.w, term.h, term.w*term.h*4/1024/1024]);
@@ -864,15 +868,20 @@ begin
 	if term.w > dm.w then term.w := dm.w;
 	if term.h > dm.h then term.h := dm.h;
 	win := SDL_CreateWindow(PChar(windowTitle), SDL_WINDOWPOS_CENTERED,
-				SDL_WINDOWPOS_CENTERED,term.w, term.h, 0);
-	pixmap.createRenderer(win);
-	pixmap.renderClear;
-	pixmap.present(false);
-	SDL_StartTextInput();
-	waitNextEvent;
-	pixmap.destroyRenderer;
-	SDL_StopTextInput();
-	SDL_DestroyWindow(win);	
+				SDL_WINDOWPOS_CENTERED,term.w, term.h, SDL_WINDOW_SHOWN);
+	if win <> nil then begin
+		pixmap.init;
+		pixmap.createRenderer(win);
+		pixmap.renderClear;
+		pixmap.present(false);
+		SDL_StartTextInput();
+		waitNextEvent;
+		pixmap.destroyRenderer;
+		SDL_StopTextInput();
+		SDL_DestroyWindow(win);	
+	end else begin
+		Logger.error('Window cannot be created. %s', [SDL_GetError()]);
+	end;
 	SDL_Quit;
 	sdlReady := FALSE; (* Should already be set in end of WaitNextEvent *)
 	winmain := 0;
@@ -881,14 +890,19 @@ end;
 procedure TextMode(Mode : Word);
 var
 	event : TSDL_Event;
+	rc : DWord;
 begin
-	assignOutput(false);
+//	assignOutput(false);
 	sdlReady := FALSE;
 	event.type_ := SDL_QUITEV;
 	(* Close the openned window first *)
 	if winThread > 0 then begin
+		Logger.log('Wait for thread termination %d', [winThread]);
 		SDL_PushEvent(@event);
-		WaitForThreadTerminate(winThread,-1);
+		rc := WaitForThreadTerminate(winThread,-1);
+		writeln(stderr, 'Thread terminated ', rc);
+		winThread := 0;
+		sdlReady := FALSE;
 	end;
 	LastMode := Mode;
 	if (Mode and Mono) = Mono then monoChrome := true
@@ -901,8 +915,8 @@ begin
 		end;
 		(* Wait for completion of window construction *)
 		while (not sdlReady) do begin end; 
+		Logger.log('Window ready %d', [winThread]);
 		assignOutput(true);
-		Logger.log('Window ready');
 	end;
 end;
 
@@ -1055,19 +1069,76 @@ begin
 end;
 		
 (* CRT redirection functions *)
-Procedure crtClose(Var F: TextRec);
+function crtClose(Var F: TextRec): Integer;
 Begin
 	F.Mode:=fmClosed;
+	crtClose := 0;
 End;
 
+function crtRead(var F: TextRec): Integer;
+var
+	c : Char;
+begin
+	F.BufPos := 0;
+	F.BufEnd := 0;
+	repeat
+		if F.BufPos > F.BufEnd then
+			F.BufEnd := F.BufPOs;
+		c := ReadKey;
+		case c of
+			#0: ReadKey;
+			#8: if (F.BufPos > 0) and (F.BufPos = F.BufEnd) then begin
+					GotoXY(WhereX-1, WhereY);
+					putChar(' ');
+					GotoXY(WhereX-1, WhereY);
+					Dec(F.BufPos);
+					Dec(F.BufEnd);
+				end;
+			#13: begin
+				putChar(#10);
+				F.BufPtr^[F.BufEnd] := #13;
+				Inc(F.BufEnd);
+				F.BufPtr^[F.BufEnd] := #10;
+				Inc(F.BufEnd);
+				break;
+				end;
+			#26: if CheckEOF then begin
+					F.BufPtr^[F.BufEnd] := #26;
+					Inc(F.BufEnd);
+					break;
+				end;
+			#32..#255: 
+					if F.BufPos < F.BufSize - 2 then begin
+						F.BufPtr^[F.BufPos] := c;
+						Inc(F.BufPos);
+						putChar(c);
+					end;
+			end
+		until false;
+		F.BufPos := 0;
+		crtRead := 0;
+end;
+
+function crtReturn(var F: TextRec): Integer;
+begin
+	F.BufEnd := 0;
+	F.BufPos := 0;
+	crtReturn := 0;
+end;
+
 (* Reasign the output function *)
-procedure crtOpen(Var F : TextRec);
+function crtOpen(Var F : TextRec): Integer;
 begin
 	if F.Mode=fmOutput Then begin
 		TextRec(F).InOutFunc:=@crtWrite;
 		TextRec(F).FlushFunc:=@crtWrite;
+	end else begin
+		F.Mode := fmInput;
+		TextRec(F).InOutFunc := @crtRead;
+		TextRec(F).FlushFunc := @crtReturn;
 	end;
 	TextRec(F).CloseFunc:=@crtClose;
+	crtOpen := 0;
 end;
 
 procedure assignCrt(Var F : Text);
@@ -1080,16 +1151,26 @@ end;
 (* Redirect output to render through SDL. *)
 procedure assignOutput(sw :boolean);
 begin
-	if (savedOpenFunc = nil) and sw then begin
-		assignCrt(output);
-		Rewrite(Output);
-		TextRec(Output).Handle:=StdOutputHandle;
-	end else if (savedOpenFunc <> nil) then begin
-		Assign(Output,'');
-		TextRec(Output).OpenFunc:= savedOpenFunc;
-		Rewrite(Output);
-		TextRec(Output).Handle:=StdOutputHandle;
-		savedOpenFunc := nil;
+	if sw then begin
+		if savedOpenFunc = nil then begin
+			assignCrt(output);
+			Rewrite(Output);
+			TextRec(Output).Handle:=StdOutputHandle;
+			assignCrt(Input);
+			Reset(Input);
+		end;
+	end else begin
+		if (savedOpenFunc <> nil) then begin
+			Assign(Output,'');
+			TextRec(Output).OpenFunc:= savedOpenFunc;
+			Rewrite(Output);
+			TextRec(Output).Handle:=StdOutputHandle;
+			Assign(Input, '');
+			TextRec(Input).OpenFunc:= savedOpenFunc;
+			Reset(Input);
+			TextRec(Output).Handle:=StdInputHandle;
+			savedOpenFunc := nil;
+		end;
 	end;
 end;
 
@@ -1170,6 +1251,7 @@ begin
 	fontFileName := '';
 	fontSize := 0 ;
 	monoChrome := false; (* assume colour monitor first *)
+	eventID := 0;
 end;
 
 finalization
@@ -1179,6 +1261,7 @@ begin
 		if sdlReady then closeWinMsg;
 		WaitForThreadTerminate(winThread,-1);
 	end;
+	assignOutput(false);
 	DoneCriticalSection(keyBuf.key);
 end;
 
