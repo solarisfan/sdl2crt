@@ -34,6 +34,7 @@ type
 		cursor : TCursorMap;
 		size : TSDL_Rect;
 		blinkText : Boolean;
+		valid : Boolean;
 	public
 		constructor Init;
 		destructor Release;
@@ -65,6 +66,7 @@ type
 		procedure insertLine(y, h : Integer);
 		procedure scrollScratch(idx : Integer; offset, h : Integer);
 		procedure flush;
+		function isReady : Boolean;
 	end;
 var	
 	pixmap : TPixMap;
@@ -352,6 +354,7 @@ var
 		for i := 1 to 4 do pix[i] := nil;
 		view := nil;
 		blinkText := false;
+		valid := false;
 	end;
 	
 	procedure releaseCache(p : PCacheTexture);
@@ -701,22 +704,33 @@ var
 	procedure TPixMap.setDimension(x : TScreenMode);
 	begin
 		tty_init(x);
+		if tty_valid then valid := TRUE
+		else valid := FALSE;
 	end;
 	
 	procedure TPixMap.setDimensionWith(x : TScreenMode; fontFile : AnsiString; ptSize : Integer);
 	begin
 		tty_initWith(x, fontFile, ptsize);
+		if tty_valid then valid := TRUE
+		else valid := FALSE;
 	end;
 	
 	procedure TPixMap.destroyRenderer;
 	begin
 		Release;
 		Logger.log('Destroy renderer');
-		SDL_DestroyRenderer(render);
-		tty_done;
+		if render = nil then begin
+			SDL_DestroyRenderer(render);
+			tty_done;
+		end;
 		render := nil;
 	end;
 
+	function TPixMap.isReady : Boolean;
+	begin
+		isReady := valid;
+	end;
+	
 initialization
 begin
 	Logger.log('Initializing texture management unit');
