@@ -16,6 +16,7 @@ procedure tty_renderChar(c : LongInt; foreColor, backColor : TSDL_Color; var sur
 procedure tty_SetPixelSize(var width, height : LongInt);
 procedure tty_GetPixelSize(var width, height : LongInt);
 procedure tty_SetMode(mode : TScreenMode);
+function tty_valid : Boolean;
 
 implementation
 
@@ -417,6 +418,7 @@ begin
 	err := FT_New_Face(lib, fontFile, 0, face);
 	if err > 0 then begin
 		Logger.error('Cannot load file %s', [fontFile]);
+		Logger.error('Switch to embedded font');
 		exit;
 	end;
 	Logger.log('num faces %d num glyphs %d point size:%d', 
@@ -500,7 +502,7 @@ end;
 procedure tty_init(mode : TScreenMode);
 begin
 	if (not tty_useFontFile) or (fontAry[mode].fileName = '') then begin
-		Logger.log('Load freetype library');
+		Logger.log('Load freetype library with embedded font');
 		localInit(mode);
 		load_face;
 	end else tty_initWith(mode, fontAry[mode].fileName, fontAry[mode].ptsize);
@@ -513,4 +515,10 @@ begin
 	Logger.log('Load freetype library with %s', [fontFile]);
 	localInit(mode);
 	useFont(PChar(fontFile), ptSize);
+end;
+
+function tty_valid : Boolean;
+begin
+	if face = nil then tty_valid := FALSE
+	else tty_valid := TRUE;
 end;
