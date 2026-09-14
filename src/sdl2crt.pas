@@ -776,7 +776,19 @@ begin
 	pen.y := BLEED; //vw.offset.y * pen.h + 1;
 end;
 
-procedure windowInit;
+function setPixmap(x : TScreenMode) : Boolean;
+begin
+	if fontFileName <> '' then
+		pixmap.setDimensionWith(x, fontFileName, fontSize);
+	if not pixmap.isReady then begin
+		fontFileName := '';
+		pixmap.setDimension(x);
+	end;
+	if pixmap.isReady then setPixmap := TRUE
+	else setPixmap := FALSE;
+end;
+
+function windowInit : Boolean;
 begin
 (* Setup default color and dimension *)
 	fgColor := LightGray;
@@ -814,25 +826,20 @@ begin
 	utf8ch.nbytes := 0;
 	utf8ch.idx := 0;
 	utf8ch.buf[0] := #0;
+	windowInit := FALSE;
 	
 	if (LastMode and Font8x8) = Font8x8 then begin
-		if fontFileName <> '' then
-			pixmap.setDimensionWith(S80x50, fontFileName, fontSize)
-		else pixmap.setDimension(S80x50);
+		windowInit := setPixmap(S80x50);
 		setTerm(80, 50);
 		WindMax := (49 shl 8) or 79;
 	end;
 	if (LastMode = BW40) or (LastMode = CO40) then begin
-		if fontFileName <> '' then
-			pixmap.setDimensionWith(S40x25, fontFileName, fontSize)
-		else pixmap.setDimension(S40x25);
+		windowInit := setPixmap(S40x25);
 		setTerm(40, 25);
 		WindMax := (24 shl 8) or 39;
 	end;
 	if (LastMode = BW80) or (LastMode = CO80) or (LastMode = Mono) then begin
-		if fontFileName <> '' then
-			pixmap.setDimensionWith(S80x25, fontFileName, fontSize)
-		else pixmap.setDimension(S80x25);
+		windowInit := setPixmap(S80x25);
 		setTerm(80,25);
 		WindMax := (24 shl 8) or 79;
 	end;
@@ -847,8 +854,11 @@ var
 	m : TFPUExceptionMask;
 begin
 	sdlReady := FALSE;
-
-	windowInit;
+	if not windowInit then begin
+		sdlReady := TRUE;
+		winThread :=0;
+		exit;
+	end;
 	
 	(* Work around as suggested to avoid the Invalid floating point operation error *)
 	m := GetExceptionMask;
@@ -857,8 +867,12 @@ begin
 	
 	if SDL_Init(SDL_INIT_VIDEO) < 0 then begin
 		Logger.error('SDL iniialization problem %s', [SDL_GetError()]);
-		Halt(1);
+		sdlReady := TRUE;
+		winThread := 0;
+		exit;
+		//Halt(1);
 	end;
+
 	if eventID = 0 then eventID := SDL_RegisterEvents(1);
 	SDL_GetCurrentDisplayMode(0, @dm);
 	Logger.log('Screen %d x %d Pixel: %d x %d Win: %d x %d EST texture mem: %.2fM', 
@@ -915,8 +929,14 @@ begin
 		end;
 		(* Wait for completion of window construction *)
 		while (not sdlReady) do begin end; 
-		Logger.log('Window ready %d', [winThread]);
-		assignOutput(true);
+		if winThread > 0 then begin
+			Logger.log('Window ready %d', [winThread]);
+			assignOutput(true);
+		end else begin
+			(* Thread should be terminated by now. Can halt the main program *)
+			fontFileName := '';
+			Halt(2);
+		end;
 	end;
 end;
 
